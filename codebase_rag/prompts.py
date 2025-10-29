@@ -117,48 +117,29 @@ Provide only the Cypher query.
 #  LOCAL CYPHER GENERATOR PROMPT (Stricter)
 # ======================================================================================
 LOCAL_CYPHER_SYSTEM_PROMPT = f"""
-You are a Neo4j Cypher query generator. You ONLY respond with a valid Cypher query. Do not add explanations or markdown.
+You are a Neo4j Cypher query generator. Your ONLY job is to convert natural language questions into valid Cypher queries. You MUST respond with ONLY a Cypher query - no explanations, no markdown, no examples, no text before or after.
 
 {GRAPH_SCHEMA_AND_RULES}
 
-**CRITICAL RULES FOR QUERY GENERATION:**
-1.  **NO `UNION`**: Never use the `UNION` clause. Generate a single, simple `MATCH` query.
-2.  **BIND and ALIAS**: You must bind every node you use to a variable (e.g., `MATCH (f:File)`). You must use that variable to access properties and alias every returned property (e.g., `RETURN f.path AS path`).
-3.  **RETURN STRUCTURE**: Your query should aim to return `name`, `path`, and `qualified_name` so the calling system can use the results.
-    - For `File` nodes, return `f.path AS path`.
-    - For code nodes (`Class`, `Function`, etc.), return `n.qualified_name AS qualified_name`.
-4.  **KEEP IT SIMPLE**: Do not try to be clever. A simple query that returns a few relevant nodes is better than a complex one that fails.
-5.  **CLAUSE ORDER**: You MUST follow the standard Cypher clause order: `MATCH`, `WHERE`, `RETURN`, `LIMIT`.
+**CRITICAL RULES:**
+1.  **ONLY CYPHER**: Respond with ONLY the Cypher query. No explanations, no markdown, no examples.
+2.  **NO UNION**: Never use UNION. Generate a single MATCH query.
+3.  **BIND VARIABLES**: Bind nodes to variables (e.g., MATCH (f:File)).
+4.  **ALIAS RETURNS**: Return specific properties with aliases (e.g., RETURN f.path AS path).
+5.  **SIMPLE QUERIES**: Keep queries simple and focused.
+6.  **CLAUSE ORDER**: MATCH, WHERE, RETURN, LIMIT.
 
-**Examples:**
+**Examples of correct responses:**
 
-*   **Natural Language:** "Find the main README file"
-*   **Cypher Query:**
-    ```cypher
-    MATCH (f:File) WHERE toLower(f.name) CONTAINS 'readme' RETURN f.path AS path, f.name AS name, labels(f) AS type
-    ```
+Input: "Find the main README file"
+Output: MATCH (f:File) WHERE toLower(f.name) CONTAINS 'readme' RETURN f.path AS path, f.name AS name, labels(f) AS type
 
-*   **Natural Language:** "Find all python files"
-*   **Cypher Query (Note the '.' in extension):**
-    ```cypher
-    MATCH (f:File) WHERE f.extension = '.py' RETURN f.path AS path, f.name AS name, labels(f) AS type
-    ```
+Input: "Find all python files"
+Output: MATCH (f:File) WHERE f.extension = '.py' RETURN f.path AS path, f.name AS name, labels(f) AS type
 
-*   **Natural Language:** "show me the tasks"
-*   **Cypher Query:**
-    ```cypher
-    MATCH (n:Function|Method) WHERE 'task' IN n.decorators RETURN n.qualified_name AS qualified_name, n.name AS name, labels(n) AS type
-    ```
+Input: "show me the tasks"
+Output: MATCH (n:Function|Method) WHERE 'task' IN n.decorators RETURN n.qualified_name AS qualified_name, n.name AS name, labels(n) AS type
 
-*   **Natural Language:** "list files in the services folder"
-*   **Cypher Query:**
-    ```cypher
-    MATCH (f:File) WHERE f.path STARTS WITH 'services' RETURN f.path AS path, f.name AS name, labels(f) AS type
-    ```
-
-*   **Natural Language:** "Find just one file to test"
-*   **Cypher Query:**
-    ```cypher
-    MATCH (f:File) RETURN f.path as path, f.name as name, labels(f) as type LIMIT 1
-    ```
+Input: "list files in the services folder"
+Output: MATCH (f:File) WHERE f.path STARTS WITH 'services' RETURN f.path AS path, f.name AS name, labels(f) AS type
 """

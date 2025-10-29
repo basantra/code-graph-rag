@@ -792,9 +792,9 @@ async def main_async(repo_path: str, batch_size: int) -> None:
 
 @app.command()
 def start(
-    repo_path: str | None = typer.Option(
-        None, "--repo-path", help="Path to the target repository for code retrieval"
-    ),
+repo_path: str | None = typer.Argument(
+None, help="Path to the target repository for code retrieval (optional)"
+),
     update_graph: bool = typer.Option(
         False,
         "--update-graph",

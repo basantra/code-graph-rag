@@ -18,11 +18,52 @@ class LLMGenerationError(Exception):
 
 def _clean_cypher_response(response_text: str) -> str:
     """Utility to clean up common LLM formatting artifacts from a Cypher query."""
-    query = response_text.strip().replace("`", "")
-    if query.startswith("cypher"):
+    import re
+
+    # Remove markdown code blocks
+    # Look for ```cypher ... ``` or ``` ... ```
+    cypher_block_pattern = r'```(?:cypher)?\s*\n?(.*?)\n?```'
+    match = re.search(cypher_block_pattern, response_text, re.DOTALL | re.IGNORECASE)
+    if match:
+        query = match.group(1).strip()
+    else:
+        # No code block found, try to extract from text
+        query = response_text.strip()
+
+    # Remove backticks and other artifacts
+    query = query.replace("`", "").strip()
+
+    # Remove "cypher" prefix if present
+    if query.lower().startswith("cypher"):
         query = query[6:].strip()
-    if not query.endswith(";"):
-        query += ";"
+
+    # Try to find the actual query by looking for Cypher keywords
+    lines = query.split('\n')
+    cypher_lines = []
+    in_query = False
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Stop if we hit explanation text (common patterns)
+        if in_query and re.match(r'^(This|You can|The query|To list|Here is)', line, re.IGNORECASE):
+            break
+        # Check if line starts with Cypher keywords
+        if re.match(r'^(MATCH|WITH|WHERE|RETURN|CREATE|DELETE|SET|MERGE|OPTIONAL|PROFILE|EXPLAIN|UNWIND|FOREACH|CALL|START|USING|ORDER BY|LIMIT|SKIP|DISTINCT)\b', line.upper()):
+            in_query = True
+        if in_query:
+            cypher_lines.append(line)
+
+    if cypher_lines:
+        query = ' '.join(cypher_lines)
+    else:
+        # Fallback: just clean the original query
+        query = query
+
+    # Ensure it ends with semicolon
+    query = query.rstrip(';').strip() + ";"
+
     return query
 
 
@@ -71,16 +112,34 @@ class CypherGenerator:
         )
         try:
             result = await self.agent.run(natural_language_query)
-            if (
-                not isinstance(result.output, str)
-                or "MATCH" not in result.output.upper()
-            ):
+            if not isinstance(result.output, str):
                 raise LLMGenerationError(
                     f"LLM did not generate a valid query. Output: {result.output}"
                 )
 
             query = _clean_cypher_response(result.output)
-            logger.info(f"  [CypherGenerator] Generated Cypher: {query}")
+
+            # Validate the cleaned query - be very strict
+            query_upper = query.upper()
+            if not ("MATCH" in query_upper and "RETURN" in query_upper):
+                raise LLMGenerationError(
+                f"Output does not contain both MATCH and RETURN keywords. This is not a valid Cypher query. Output: {query}"
+            )
+
+            # Check that it's not explanatory text
+            if any(phrase in query.lower() for phrase in [
+                "the database is structured",
+                "natural language prompts",
+                "here are some examples",
+                "you can use",
+                "the query",
+                "to find",
+            ]):
+                raise LLMGenerationError(
+                    f"LLM returned explanatory text instead of a Cypher query. Output: {query}"
+                )
+            logger.info(f"  [CypherGenerator] Raw LLM output: {result.output}")
+            logger.info(f"  [CypherGenerator] Cleaned Cypher: {query}")
             return query
         except Exception as e:
             logger.error(f"  [CypherGenerator] Error: {e}")
